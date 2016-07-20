@@ -35,6 +35,7 @@
 #include "as-release.h"
 #include "as-screenshot.h"
 #include "as-review.h"
+#include "as-suggest.h"
 #include "as-content-rating.h"
 #include "as-translation.h"
 
