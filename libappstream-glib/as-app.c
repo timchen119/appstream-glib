@@ -494,6 +494,7 @@ as_app_get_unique_id (AsApp *app)
 	return priv->unique_id;
 }
 
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
 /**
  * as_app_get_id_no_prefix:
  * @app: a #AsApp instance.
@@ -516,6 +517,7 @@ as_app_get_id_no_prefix (AsApp *app)
 		return tmp + 1;
 	return priv->id;
 }
+G_GNUC_END_IGNORE_DEPRECATIONS
 
 /**
  * as_app_get_id_filename:
@@ -1713,7 +1715,7 @@ as_app_set_id (AsApp *app, const gchar *id)
 
 	/* save filename */
 	g_free (priv->id_filename);
-	priv->id_filename = g_strdup (as_app_get_id_no_prefix (app));
+	priv->id_filename = g_strdup (id);
 	g_strdelimit (priv->id_filename, "&<>", '-');
 	tmp = g_strrstr_len (priv->id_filename, -1, ".");
 	if (tmp != NULL)

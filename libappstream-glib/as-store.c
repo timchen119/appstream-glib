@@ -64,7 +64,7 @@ typedef struct
 	gchar			*builder_id;
 	gdouble			 api_version;
 	GPtrArray		*array;		/* of AsApp */
-	GHashTable		*hash_id;	/* of AsApp{id} */
+	GHashTable		*hash_unique_id;	/* of AsApp{unique_id} */
 	GHashTable		*hash_pkgname;	/* of AsApp{pkgname} */
 	AsMonitor		*monitor;
 	GHashTable		*metadata_indexes;	/* GHashTable{key} */
@@ -79,7 +79,7 @@ typedef struct
 } AsStorePrivate;
 
 typedef struct {
-	gchar			*id_prefix;
+	gchar			*scope;
 	gchar			*arch;
 } AsStorePathData;
 
@@ -105,7 +105,7 @@ G_DEFINE_QUARK (as-store-error-quark, as_store_error)
 
 static gboolean	as_store_from_file_internal (AsStore *store,
 					     GFile *file,
-					     const gchar *id_prefix,
+					     const gchar *scope,
 					     const gchar *arch,
 					     GCancellable *cancellable,
 					     GError **error);
@@ -122,7 +122,7 @@ as_store_finalize (GObject *object)
 	g_ptr_array_unref (priv->array);
 	g_object_unref (priv->monitor);
 	g_object_unref (priv->profile);
-	g_hash_table_unref (priv->hash_id);
+	g_hash_table_unref (priv->hash_unique_id);
 	g_hash_table_unref (priv->hash_pkgname);
 	g_hash_table_unref (priv->metadata_indexes);
 	g_hash_table_unref (priv->appinfo_dirs);
@@ -292,7 +292,7 @@ as_store_remove_all (AsStore *store)
 	AsStorePrivate *priv = GET_PRIVATE (store);
 	g_return_if_fail (AS_IS_STORE (store));
 	g_ptr_array_set_size (priv->array, 0);
-	g_hash_table_remove_all (priv->hash_id);
+	g_hash_table_remove_all (priv->hash_unique_id);
 	g_hash_table_remove_all (priv->hash_pkgname);
 }
 
@@ -409,7 +409,7 @@ as_store_get_apps_by_id (AsStore *store, const gchar *id)
 	apps = g_ptr_array_new_with_free_func ((GDestroyNotify) g_object_unref);
 	for (i = 0; i < priv->array->len; i++) {
 		app = g_ptr_array_index (priv->array, i);
-		if (g_strcmp0 (as_app_get_id_no_prefix (app), id) != 0)
+		if (g_strcmp0 (as_app_get_id (app), id) != 0)
 			continue;
 		g_ptr_array_add (apps, g_object_ref (app));
 	}
@@ -441,6 +441,10 @@ as_store_add_metadata_index (AsStore *store, const gchar *key)
  *
  * Finds an application in the store by ID.
  *
+ * WARNING: This function returns just the first application matching the
+ * AppStream ID. Sane people will be using as_store_get_apps_by_id() or
+ * as_store_get_app_by_unique_id().
+ *
  * Returns: (transfer none): a #AsApp or %NULL
  *
  * Since: 0.1.0
@@ -448,9 +452,57 @@ as_store_add_metadata_index (AsStore *store, const gchar *key)
 AsApp *
 as_store_get_app_by_id (AsStore *store, const gchar *id)
 {
+	AsApp *app;
 	AsStorePrivate *priv = GET_PRIVATE (store);
+	guint i;
+
 	g_return_val_if_fail (AS_IS_STORE (store), NULL);
-	return g_hash_table_lookup (priv->hash_id, id);
+
+	/* find all the apps with this id */
+	for (i = 0; i < priv->array->len; i++) {
+		app = g_ptr_array_index (priv->array, i);
+		if (g_strcmp0 (as_app_get_id (app), id) == 0)
+			return app;
+	}
+	return NULL;
+}
+
+/**
+ * as_store_get_app_by_unique_id:
+ * @store: a #AsStore instance.
+ * @unique_id: the application unique ID, which can be wildcarded
+ *
+ * Finds an application in the store by ID.
+ *
+ * Returns: (transfer none): a #AsApp or %NULL
+ *
+ * Since: 0.6.1
+ **/
+AsApp *
+as_store_get_app_by_unique_id (AsStore *store, const gchar *unique_id)
+{
+	AsApp *app;
+	AsStorePrivate *priv = GET_PRIVATE (store);
+	guint i;
+
+	g_return_val_if_fail (AS_IS_STORE (store), NULL);
+
+	/* do a fast lookup for when there are no wildcards */
+	app = g_hash_table_lookup (priv->hash_unique_id, unique_id);
+	if (app != NULL)
+		return app;
+
+	/* no wildcards? */
+	if (g_strstr_len (unique_id, -1, "*") == NULL)
+		return NULL;
+
+	/* find all the apps matching this unique id */
+	for (i = 0; i < priv->array->len; i++) {
+		app = g_ptr_array_index (priv->array, i);
+		if (as_utils_unique_id_equal (as_app_get_unique_id (app), unique_id))
+			return app;
+	}
+	return NULL;
 }
 
 /**
@@ -496,6 +548,7 @@ as_store_get_app_by_provide (AsStore *store, AsProvideKind kind, const gchar *va
 
 }
 
+G_GNUC_BEGIN_IGNORE_DEPRECATIONS
 /**
  * as_store_get_app_by_id_ignore_prefix:
  * @store: a #AsStore instance.
@@ -525,6 +578,7 @@ as_store_get_app_by_id_ignore_prefix (AsStore *store, const gchar *id)
 	}
 	return NULL;
 }
+G_GNUC_END_IGNORE_DEPRECATIONS
 
 /**
  * as_store_get_app_by_id_with_fallbacks:
@@ -742,7 +796,7 @@ void
 as_store_remove_app (AsStore *store, AsApp *app)
 {
 	AsStorePrivate *priv = GET_PRIVATE (store);
-	g_hash_table_remove (priv->hash_id, as_app_get_id (app));
+	g_hash_table_remove (priv->hash_unique_id, as_app_get_id (app));
 	g_ptr_array_remove (priv->array, app);
 	g_hash_table_remove_all (priv->metadata_indexes);
 
@@ -766,13 +820,13 @@ as_store_remove_app_by_id (AsStore *store, const gchar *id)
 	AsStorePrivate *priv = GET_PRIVATE (store);
 	guint i;
 
-	if (!g_hash_table_remove (priv->hash_id, id))
-		return;
 	for (i = 0; i < priv->array->len; i++) {
 		app = g_ptr_array_index (priv->array, i);
 		if (g_strcmp0 (id, as_app_get_id (app)) != 0)
 			continue;
 		g_ptr_array_remove (priv->array, app);
+		g_hash_table_remove (priv->hash_unique_id,
+				     as_app_get_unique_id (app));
 	}
 	g_hash_table_remove_all (priv->metadata_indexes);
 
@@ -781,12 +835,44 @@ as_store_remove_app_by_id (AsStore *store, const gchar *id)
 }
 
 /**
+ * as_store_remove_app_by_unique_id:
+ * @store: a #AsStore instance.
+ * @unique_id: an unique ID, e.g.
+ *      "user/flatpak/gnome-apps-nightly/app/gimp.desktop/i386/master"
+ *
+ * Removes an application from the store if it exists.
+ *
+ * Since: 0.6.1
+ **/
+void
+as_store_remove_app_by_unique_id (AsStore *store, const gchar *unique_id)
+{
+	AsApp *app;
+	AsStorePrivate *priv = GET_PRIVATE (store);
+	guint i;
+
+	if (!g_hash_table_remove (priv->hash_unique_id, unique_id))
+		return;
+	for (i = 0; i < priv->array->len; i++) {
+		app = g_ptr_array_index (priv->array, i);
+		if (g_strcmp0 (unique_id, as_app_get_unique_id (app)) != 0)
+			continue;
+		g_ptr_array_remove (priv->array, app);
+	}
+	g_hash_table_remove_all (priv->metadata_indexes);
+
+	/* removed */
+	as_store_perhaps_emit_changed (store, "remove-app-by-unique-id");
+}
+
+/**
  * as_store_add_app:
  * @store: a #AsStore instance.
  * @app: a #AsApp instance.
  *
- * Adds an application to the store. If a lower priority application has already
- * been added then this new application will replace it.
+ * Adds an application to the store. If a lower priority application with the
+ * same unique ID has already been added then this new application will
+ * replace it.
  *
  * Additionally only applications where the kind is known will be added.
  *
@@ -798,17 +884,17 @@ as_store_add_app (AsStore *store, AsApp *app)
 	AsApp *item;
 	AsStorePrivate *priv = GET_PRIVATE (store);
 	GPtrArray *pkgnames;
-	const gchar *id;
+	const gchar *unique_id;
 	const gchar *pkgname;
 	guint i;
 
 	/* have we recorded this before? */
-	id = as_app_get_id (app);
-	if (id == NULL) {
-		g_warning ("application has no ID set");
+	unique_id = as_app_get_unique_id (app);
+	if (unique_id == NULL) {
+		g_warning ("application has no unique ID set");
 		return;
 	}
-	item = g_hash_table_lookup (priv->hash_id, id);
+	item = as_store_get_app_by_unique_id (store, unique_id);
 	if (item != NULL) {
 
 		/* the previously stored app is what we actually want */
@@ -816,17 +902,19 @@ as_store_add_app (AsStore *store, AsApp *app)
 
 			if (as_app_get_source_kind (app) == AS_APP_SOURCE_KIND_APPSTREAM &&
 			    as_app_get_source_kind (item) == AS_APP_SOURCE_KIND_APPDATA) {
-				g_debug ("ignoring AppStream entry as AppData exists: %s", id);
+				g_debug ("ignoring AppStream entry[%s] as AppData exists[%s]",
+					 unique_id, as_app_get_unique_id (item));
 				return;
 			}
 			if (as_app_get_source_kind (app) == AS_APP_SOURCE_KIND_APPSTREAM &&
 			    as_app_get_source_kind (item) == AS_APP_SOURCE_KIND_DESKTOP) {
-				g_debug ("ignoring AppStream entry as desktop exists: %s", id);
+				g_debug ("ignoring AppStream entry[%s] as desktop exists[%s]",
+					 unique_id, as_app_get_unique_id (item));
 				return;
 			}
 			if (as_app_get_source_kind (app) == AS_APP_SOURCE_KIND_APPDATA &&
 			    as_app_get_source_kind (item) == AS_APP_SOURCE_KIND_DESKTOP) {
-				g_debug ("merging duplicate AppData:desktop entries: %s", id);
+				g_debug ("merging duplicate AppData:desktop entries: %s", unique_id);
 				as_app_subsume_full (app, item, AS_APP_SUBSUME_FLAG_BOTH_WAYS);
 				/* promote the desktop source to AppData */
 				as_app_set_source_kind (item, AS_APP_SOURCE_KIND_APPDATA);
@@ -834,7 +922,7 @@ as_store_add_app (AsStore *store, AsApp *app)
 			}
 			if (as_app_get_source_kind (app) == AS_APP_SOURCE_KIND_DESKTOP &&
 			    as_app_get_source_kind (item) == AS_APP_SOURCE_KIND_APPDATA) {
-				g_debug ("merging duplicate desktop:AppData entries: %s", id);
+				g_debug ("merging duplicate desktop:AppData entries: %s", unique_id);
 				as_app_subsume_full (app, item, AS_APP_SUBSUME_FLAG_BOTH_WAYS);
 				return;
 			}
@@ -843,35 +931,38 @@ as_store_add_app (AsStore *store, AsApp *app)
 			if (as_app_get_source_kind (app) == AS_APP_SOURCE_KIND_APPDATA &&
 			    as_app_get_source_kind (item) == AS_APP_SOURCE_KIND_APPSTREAM) {
 				as_app_set_state (item, AS_APP_STATE_INSTALLED);
-				g_debug ("ignoring AppData entry as AppStream exists: %s", id);
+				g_debug ("ignoring AppData entry[%s] as AppStream exists[%s]",
+					 unique_id, as_app_get_unique_id (item));
 				return;
 			}
 			if (as_app_get_source_kind (app) == AS_APP_SOURCE_KIND_DESKTOP &&
 			    as_app_get_source_kind (item) == AS_APP_SOURCE_KIND_APPSTREAM) {
 				as_app_set_state (item, AS_APP_STATE_INSTALLED);
-				g_debug ("ignoring desktop entry as AppStream exists: %s", id);
+				g_debug ("ignoring desktop entry[%s] as AppStream exists[%s]",
+					 unique_id, as_app_get_unique_id (item));
 				return;
 			}
 
 			/* the previously stored app is higher priority */
 			if (as_app_get_priority (item) >
 			    as_app_get_priority (app)) {
-				g_debug ("ignoring duplicate %s:%s entry: %s",
+				g_debug ("ignoring duplicate %s[%s]:%s[%s] entry as lower prio",
 					 as_app_source_kind_to_string (as_app_get_source_kind (app)),
+					 unique_id,
 					 as_app_source_kind_to_string (as_app_get_source_kind (item)),
-					 id);
+					 as_app_get_unique_id (item));
 				return;
 			}
 
 			/* same priority */
 			if (as_app_get_priority (item) ==
 			    as_app_get_priority (app)) {
-				g_debug ("merging duplicate %s:%s entries: %s",
+				g_debug ("ignoring duplicate %s[%s]:%s[%s] entry",
 					 as_app_source_kind_to_string (as_app_get_source_kind (app)),
+					 unique_id,
 					 as_app_source_kind_to_string (as_app_get_source_kind (item)),
-					 id);
-				as_app_subsume_full (app, item,
-						     AS_APP_SUBSUME_FLAG_BOTH_WAYS);
+					 as_app_get_unique_id (item));
+				as_app_subsume_full (item, app, AS_APP_SUBSUME_FLAG_NONE);
 
 				/* promote the desktop source to AppData */
 				if (as_app_get_source_kind (item) == AS_APP_SOURCE_KIND_DESKTOP &&
@@ -885,15 +976,15 @@ as_store_add_app (AsStore *store, AsApp *app)
 		 * previously stored */
 		g_debug ("removing %s entry: %s",
 			 as_app_source_kind_to_string (as_app_get_source_kind (item)),
-			 id);
-		g_hash_table_remove (priv->hash_id, id);
+			 unique_id);
+		g_hash_table_remove (priv->hash_unique_id, unique_id);
 		g_ptr_array_remove (priv->array, item);
 	}
 
 	/* success, add to array */
 	g_ptr_array_add (priv->array, g_object_ref (app));
-	g_hash_table_insert (priv->hash_id,
-			     (gpointer) as_app_get_id (app),
+	g_hash_table_insert (priv->hash_unique_id,
+			     (gpointer) as_app_get_unique_id (app),
 			     app);
 	pkgnames = as_app_get_pkgnames (app);
 	for (i = 0; i < pkgnames->len; i++) {
@@ -934,7 +1025,8 @@ as_store_match_addons (AsStore *store)
 		}
 		for (j = 0; j < plugin_ids->len; j++) {
 			tmp = g_ptr_array_index (plugin_ids, j);
-			parent = g_hash_table_lookup (priv->hash_id, tmp);
+//FIXME -- restrict to kind?
+			parent = as_store_get_app_by_id (store, tmp);
 			if (parent == NULL)
 				continue;
 			as_app_add_addon (parent, app);
@@ -942,36 +1034,18 @@ as_store_match_addons (AsStore *store)
 	}
 }
 
-/**
- * as_store_fixup_id_prefix:
- *
- * When we lived in a world where all software got installed to /usr we could
- * continue to use the application ID as the primary identifier.
- *
- * Now we support installing things per-user, and also per-system and per-user
- * flatpak (not even including jhbuild) we need to use the id prefix to
- * disambiguate the different applications according to a 'scope'.
- *
- * This means when we launch a specific application in the software center
- * we know what desktop file to use, and we can also then support different
- * versions of applications installed system wide and per-user.
- **/
-static void
-as_store_fixup_id_prefix (AsApp *app, const gchar *id_prefix)
+static const gchar *
+_as_app_get_kind_unique (AsApp *app)
 {
-	g_autofree gchar *id = NULL;
-
-	/* ignore this for compatibility reasons */
-	if (id_prefix == NULL || g_strcmp0 (id_prefix, "system") == 0)
-		return;
-	id = g_strdup_printf ("%s:%s", id_prefix, as_app_get_id (app));
-	as_app_set_id (app, id);
+	if (as_app_get_kind (app) == AS_APP_KIND_DESKTOP)
+		return "app";
+	return as_app_kind_to_string (as_app_get_kind (app));
 }
 
 static gboolean
 as_store_from_root (AsStore *store,
 		    AsNode *root,
-		    const gchar *id_prefix,
+		    const gchar *scope,
 		    const gchar *icon_prefix,
 		    const gchar *source_filename,
 		    const gchar *arch,
@@ -981,21 +1055,17 @@ as_store_from_root (AsStore *store,
 	AsNode *apps;
 	AsNode *n;
 	const gchar *tmp;
-	const gchar *origin_delim = ":";
+	const gchar *app_scope;
+	const gchar *app_system;
 	gchar *str;
 	g_autofree AsNodeContext *ctx = NULL;
 	g_autofree gchar *icon_path = NULL;
-	g_autofree gchar *id_prefix_app = NULL;
-	g_autofree gchar *origin_app = NULL;
+	g_autofree gchar *app_origin = NULL;
+	g_autofree gchar *app_origin_for_icons = NULL;
 	_cleanup_uninhibit_ guint32 *tok = NULL;
 	g_autoptr(AsProfileTask) ptask = NULL;
 
 	g_return_val_if_fail (AS_IS_STORE (store), FALSE);
-
-	/* make throws us under a bus, yet again */
-	tmp = g_getenv ("AS_SELF_TEST_PREFIX_DELIM");
-	if (tmp != NULL)
-		origin_delim = tmp;
 
 	/* profile */
 	ptask = as_profile_start_literal (priv->profile, "AsStore:store-from-root");
@@ -1026,56 +1096,40 @@ as_store_from_root (AsStore *store,
 	if (tmp != NULL)
 		as_store_set_origin (store, tmp);
 
-	/* origin has prefix already specified in the XML */
-	if (priv->origin != NULL) {
-		str = g_strstr_len (priv->origin, -1, origin_delim);
-		if (str != NULL) {
-			id_prefix_app = g_strdup (priv->origin);
-			str = g_strstr_len (id_prefix_app, -1, origin_delim);
-			if (str != NULL) {
-				str[0] = '\0';
-				origin_app = g_strdup (str + 1);
-			}
-		}
-	}
-
-	/* special case flatpak symlinks -- scope:name.xml.gz */
-	if (origin_app == NULL &&
+	/* special case symlinks -- flatpak:origin.xml.gz */
+	if (app_origin == NULL &&
 	    g_strcmp0 (priv->origin, "flatpak") == 0 &&
 	    source_filename != NULL &&
 	    g_file_test (source_filename, G_FILE_TEST_IS_SYMLINK)) {
 		g_autofree gchar *source_basename = NULL;
+
+		/* the scope is per-system, even though they are found in ~ */
+		app_scope = "system";
+		app_system = "flatpak";
 
 		/* get the origin */
 		source_basename = g_path_get_basename (source_filename);
 		str = g_strrstr (source_basename, ".xml");
 		if (str != NULL) {
 			str[0] = '\0';
-			origin_app = g_strdup (source_basename);
+			app_origin = g_strdup (source_basename + 8);
+			app_origin_for_icons = g_strdup (source_basename);
 		}
-
-		/* get the id-prefix */
-		str = g_strstr_len (source_basename, -1, origin_delim);
-		if (str != NULL) {
-			str[0] = '\0';
-			id_prefix_app = g_strdup (source_basename);
-		}
-	}
-
-	/* fallback */
-	if (origin_app == NULL) {
-		id_prefix_app = g_strdup (id_prefix);
-		origin_app = g_strdup (priv->origin);
+	} else {
+		app_scope = scope;
+		app_system = "package";
+		app_origin = g_strdup (priv->origin);
+		app_origin_for_icons = g_strdup (priv->origin);
 	}
 
 	/* print what cleverness we did */
-	if (g_strcmp0 (origin_app, priv->origin) != 0) {
+	if (g_strcmp0 (app_origin, priv->origin) != 0) {
 		g_debug ("using app origin of '%s' rather than '%s'",
-			 origin_app, priv->origin);
+			 app_origin, priv->origin);
 	}
-	if (g_strcmp0 (id_prefix_app, id_prefix) != 0) {
-		g_debug ("using app prefix of '%s' rather than '%s'",
-			 id_prefix_app, id_prefix);
+	if (g_strcmp0 (app_scope, scope) != 0) {
+		g_debug ("using app scope of '%s' rather than '%s'",
+			 app_scope, scope);
 	}
 
 	/* guess the icon path after we've read the origin and then look for
@@ -1085,12 +1139,12 @@ as_store_from_root (AsStore *store,
 		topdir = g_path_get_basename (icon_prefix);
 		if ((g_strcmp0 (topdir, "xmls") == 0 ||
 		     g_strcmp0 (topdir, "yaml") == 0)
-		    && origin_app != NULL) {
+		    && app_origin != NULL) {
 			g_autofree gchar *dirname = NULL;
 			dirname = g_path_get_dirname (icon_prefix);
 			icon_path = g_build_filename (dirname,
 						      "icons",
-						      origin_app,
+						      app_origin_for_icons,
 						      NULL);
 		} else {
 			icon_path = g_build_filename (icon_prefix, "icons", NULL);
@@ -1105,8 +1159,14 @@ as_store_from_root (AsStore *store,
 
 	ctx = as_node_context_new ();
 	for (n = apps->children; n != NULL; n = n->next) {
-		g_autoptr(GError) error_local = NULL;
+		AsBundle *bundle;
+		g_autofree gchar *app_arch = NULL;
+		g_autofree gchar *app_branch = NULL;
+		g_autofree gchar *unique_id = NULL;
 		g_autoptr(AsApp) app = NULL;
+		g_autoptr(GError) error_local = NULL;
+
+		/* not a proper app */
 		if (as_node_get_tag (n) != AS_TAG_COMPONENT)
 			continue;
 
@@ -1121,6 +1181,7 @@ as_store_from_root (AsStore *store,
 			}
 		}
 
+		/* create new */
 		app = as_app_new ();
 		if (icon_path != NULL)
 			as_app_set_icon_path (app, icon_path);
@@ -1136,11 +1197,38 @@ as_store_from_root (AsStore *store,
 			return FALSE;
 		}
 
-		/* set the correct scope */
-		as_store_fixup_id_prefix (app, id_prefix_app);
+		/* get the architecture and branch from the bundle tag */
+		bundle = as_app_get_bundle_default (app);
+		if (bundle != NULL && as_bundle_get_kind (bundle) == AS_BUNDLE_KIND_FLATPAK) {
+			g_auto(GStrv) split = g_strsplit (as_bundle_get_id (bundle), "/", -1);
+			app_arch = g_strdup (split[2]);
+			app_branch = g_strdup (split[3]);
+		} else {
+			app_arch = g_strdup ("any");
+			app_branch = g_strdup ("any");
+		}
 
-		if (origin_app != NULL)
-			as_app_set_origin (app, origin_app);
+		/*
+		 * When we lived in a world where all software got installed
+		 * to /usr we could continue to use the application ID as the
+		 * primary identifier.
+		 *
+		 * Now we support installing things per-user, and also
+		 * per-system and per-user  flatpak (not even including jhbuild)
+		 * we need to use the unique-id to disambiguate the different
+		 * applications.
+		 */
+		unique_id = as_utils_unique_id_build (app_scope,
+						      app_system,
+						      app_origin,
+						      _as_app_get_kind_unique (app),
+						      as_app_get_id (app),
+						      app_arch,
+						      app_branch);
+		as_app_set_unique_id (app, unique_id);
+
+		if (app_origin != NULL)
+			as_app_set_origin (app, app_origin);
 		if (source_filename != NULL)
 			as_app_set_source_file (app, source_filename);
 		as_store_add_app (store, app);
@@ -1299,7 +1387,7 @@ as_store_watch_source_added (AsStore *store, const gchar *filename)
 	file = g_file_new_for_path (filename);
 	if (!as_store_from_file_internal (store,
 					  file,
-					  path_data->id_prefix,
+					  path_data->scope,
 					  path_data->arch,
 					  NULL, /* cancellable */
 					  &error)){
@@ -1371,7 +1459,7 @@ as_store_monitor_removed_cb (AsMonitor *monitor,
 static void
 as_store_add_path_data (AsStore *store,
 			const gchar *path,
-			const gchar *id_prefix,
+			const gchar *scope,
 			const gchar *arch)
 {
 	AsStorePrivate *priv = GET_PRIVATE (store);
@@ -1385,28 +1473,28 @@ as_store_add_path_data (AsStore *store,
 	/* check is a directory */
 	if (!g_file_test (path, G_FILE_TEST_IS_DIR)) {
 		g_warning ("not adding path %s [%s:%s] as not a directory",
-			   path, id_prefix, arch);
+			   path, scope, arch);
 		return;
 	}
 
 	/* check not already exists */
 	path_data = g_hash_table_lookup (priv->appinfo_dirs, path);
 	if (path_data != NULL) {
-		if (g_strcmp0 (path_data->id_prefix, id_prefix) != 0 ||
+		if (g_strcmp0 (path_data->scope, scope) != 0 ||
 		    g_strcmp0 (path_data->arch, arch) != 0) {
 			g_warning ("already added path %s [%s:%s] vs new [%s:%s]",
-				   path, path_data->id_prefix, path_data->arch,
-				   id_prefix, arch);
+				   path, path_data->scope, path_data->arch,
+				   scope, arch);
 		} else {
 			g_debug ("already added path %s [%s:%s]",
-				 path, path_data->id_prefix, path_data->arch);
+				 path, path_data->scope, path_data->arch);
 		}
 		return;
 	}
 
 	/* create new */
 	path_data = g_slice_new0 (AsStorePathData);
-	path_data->id_prefix = g_strdup (id_prefix);
+	path_data->scope = g_strdup (scope);
 	path_data->arch = g_strdup (arch);
 	g_hash_table_insert (priv->appinfo_dirs, g_strdup (path), path_data);
 }
@@ -1414,7 +1502,7 @@ as_store_add_path_data (AsStore *store,
 static gboolean
 as_store_from_file_internal (AsStore *store,
 			     GFile *file,
-			     const gchar *id_prefix,
+			     const gchar *scope,
 			     const gchar *arch,
 			     GCancellable *cancellable,
 			     GError **error)
@@ -1467,7 +1555,7 @@ as_store_from_file_internal (AsStore *store,
 
 	/* icon prefix is the directory the XML has been found in */
 	icon_prefix = g_path_get_dirname (filename);
-	return as_store_from_root (store, root, id_prefix,
+	return as_store_from_root (store, root, scope,
 				   icon_prefix, filename, arch, error);
 }
 
@@ -1498,7 +1586,7 @@ as_store_from_file (AsStore *store,
 		    GError **error)
 {
 	return as_store_from_file_internal (store, file,
-					    NULL, /* id_prefix */
+					    NULL, /* scope */
 					    NULL, /* arch */
 					    cancellable, error);
 }
@@ -1604,7 +1692,7 @@ as_store_from_xml (AsStore *store,
 		return FALSE;
 	}
 	return as_store_from_root (store, root,
-				   NULL, /* id_prefix */
+				   NULL, /* scope */
 				   icon_root,
 				   NULL, /* filename */
 				   NULL, /* arch */
@@ -2106,7 +2194,7 @@ as_store_guess_origin_fallback (AsStore *store,
 
 static gboolean
 as_store_load_app_info_file (AsStore *store,
-			     const gchar *id_prefix,
+			     const gchar *scope,
 			     const gchar *path_xml,
 			     const gchar *arch,
 			     GCancellable *cancellable,
@@ -2126,7 +2214,7 @@ as_store_load_app_info_file (AsStore *store,
 	file = g_file_new_for_path (path_xml);
 	return as_store_from_file_internal (store,
 					    file,
-					    id_prefix,
+					    scope,
 					    arch,
 					    cancellable,
 					    error);
@@ -2134,7 +2222,7 @@ as_store_load_app_info_file (AsStore *store,
 
 static gboolean
 as_store_load_app_info (AsStore *store,
-			const gchar *id_prefix,
+			const gchar *scope,
 			const gchar *path,
 			const gchar *arch,
 			AsStoreLoadFlags flags,
@@ -2179,7 +2267,7 @@ as_store_load_app_info (AsStore *store,
 			continue;
 		filename_md = g_build_filename (path, tmp, NULL);
 		if (!as_store_load_app_info_file (store,
-						  id_prefix,
+						  scope,
 						  filename_md,
 						  arch,
 						  cancellable,
@@ -2196,7 +2284,7 @@ as_store_load_app_info (AsStore *store,
 	}
 
 	/* watch the directories for changes */
-	as_store_add_path_data (store, path, id_prefix, arch);
+	as_store_add_path_data (store, path, scope, arch);
 	if (!as_monitor_add_directory (priv->monitor,
 				       path,
 				       cancellable,
@@ -2244,7 +2332,7 @@ as_store_load_installed_file_is_valid (const gchar *filename)
 static gboolean
 as_store_load_installed (AsStore *store,
 			 AsStoreLoadFlags flags,
-			 const gchar *id_prefix,
+			 const gchar *scope,
 			 const gchar *path,
 			 GCancellable *cancellable,
 			 GError **error)
@@ -2265,7 +2353,7 @@ as_store_load_installed (AsStore *store,
 		return FALSE;
 
 	/* watch the directories for changes */
-	as_store_add_path_data (store, path, id_prefix, NULL);
+	as_store_add_path_data (store, path, scope, NULL);
 	if (!as_monitor_add_directory (priv->monitor,
 				       path,
 				       cancellable,
@@ -2285,6 +2373,7 @@ as_store_load_installed (AsStore *store,
 	while ((tmp = g_dir_read_name (dir)) != NULL) {
 		AsApp *app_tmp;
 		g_autofree gchar *filename = NULL;
+		g_autofree gchar *unique_id = NULL;
 		g_autoptr(AsApp) app = NULL;
 		filename = g_build_filename (path, tmp, NULL);
 		if (!as_store_load_installed_file_is_valid (filename))
@@ -2313,13 +2402,20 @@ as_store_load_installed (AsStore *store,
 			return FALSE;
 		}
 
-		/* set the correct scope */
-		as_store_fixup_id_prefix (app, id_prefix);
-
 		/* do not load applications with vetos */
 		if ((flags & AS_STORE_LOAD_FLAG_ALLOW_VETO) == 0 &&
 		    as_app_get_vetos(app)->len > 0)
 			continue;
+
+		/* set the correct scope */
+		unique_id = as_utils_unique_id_build (scope, /* scope */
+						      NULL, /* system */
+						      NULL, /* origin */
+						      _as_app_get_kind_unique (app),
+						      as_app_get_id (app),
+						      NULL, /* arch */
+						      NULL); /* branch */
+		as_app_set_unique_id (app, unique_id);
 
 		/* as these are added from installed AppData files then all the
 		 * releases can also be marked as installed */
@@ -2361,7 +2457,7 @@ as_store_load_path (AsStore *store, const gchar *path,
 static gboolean
 as_store_search_installed (AsStore *store,
 			   AsStoreLoadFlags flags,
-			   const gchar *id_prefix,
+			   const gchar *scope,
 			   const gchar *path,
 			   GCancellable *cancellable,
 			   GError **error)
@@ -2372,14 +2468,14 @@ as_store_search_installed (AsStore *store,
 	g_debug ("searching path %s", dest);
 	if (!g_file_test (dest, G_FILE_TEST_EXISTS))
 		return TRUE;
-	return as_store_load_installed (store, flags, id_prefix,
+	return as_store_load_installed (store, flags, scope,
 					dest, cancellable, error);
 }
 
 static gboolean
 as_store_search_app_info (AsStore *store,
 			  AsStoreLoadFlags flags,
-			  const gchar *id_prefix,
+			  const gchar *scope,
 			  const gchar *path,
 			  GCancellable *cancellable,
 			  GError **error)
@@ -2396,7 +2492,7 @@ as_store_search_app_info (AsStore *store,
 					 NULL);
 		if (!g_file_test (dest, G_FILE_TEST_EXISTS))
 			continue;
-		if (!as_store_load_app_info (store, id_prefix, dest, NULL,
+		if (!as_store_load_app_info (store, scope, dest, NULL,
 					     flags, cancellable, error))
 			return FALSE;
 	}
@@ -2867,7 +2963,7 @@ static void
 as_store_path_data_free (AsStorePathData *path_data)
 {
 	g_free (path_data->arch);
-	g_free (path_data->id_prefix);
+	g_free (path_data->scope);
 	g_slice_free (AsStorePathData, path_data);
 }
 
@@ -2879,10 +2975,10 @@ as_store_init (AsStore *store)
 	priv->api_version = AS_API_VERSION_NEWEST;
 	priv->array = g_ptr_array_new_with_free_func ((GDestroyNotify) g_object_unref);
 	priv->watch_flags = AS_STORE_WATCH_FLAG_NONE;
-	priv->hash_id = g_hash_table_new_full (g_str_hash,
-					       g_str_equal,
-					       NULL,
-					       NULL);
+	priv->hash_unique_id = g_hash_table_new_full (g_str_hash,
+						      g_str_equal,
+						      NULL,
+						      NULL);
 	priv->hash_pkgname = g_hash_table_new_full (g_str_hash,
 						    g_str_equal,
 						    g_free,

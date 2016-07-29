@@ -322,7 +322,8 @@ const gchar	*as_app_get_icon_path		(AsApp		*app);
 const gchar	*as_app_get_id_filename		(AsApp		*app);
 const gchar	*as_app_get_id			(AsApp		*app);
 const gchar	*as_app_get_unique_id		(AsApp		*app);
-const gchar	*as_app_get_id_no_prefix	(AsApp		*app);
+const gchar	*as_app_get_id_no_prefix	(AsApp		*app)
+G_DEPRECATED_FOR(as_app_get_id);
 const gchar	*as_app_get_pkgname_default	(AsApp		*app);
 const gchar	*as_app_get_source_pkgname	(AsApp		*app);
 const gchar	*as_app_get_origin		(AsApp		*app);

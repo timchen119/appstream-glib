@@ -2965,15 +2965,14 @@ as_test_store_prefix_func (void)
 	AsApp *app_tmp;
 
 	/* add app */
-	as_app_set_id (app, "flatpak-user:org.gnome.Software.desktop");
+	as_app_set_id (app, "org.gnome.Software.desktop");
+	as_app_set_unique_id (app, "system/flatpak/remote-name/app/test.desktop/x86_64/master");
 	as_store_add_app (store, app);
 
 	app_tmp = as_store_get_app_by_id (store, "org.gnome.Software.desktop");
-	g_assert (app_tmp == NULL);
-	app_tmp = as_store_get_app_by_id_ignore_prefix (store, "org.gnome.Software.desktop");
 	g_assert (app_tmp != NULL);
-	g_assert_cmpstr (as_app_get_id (app_tmp), ==,
-			 "flatpak-user:org.gnome.Software.desktop");
+	g_assert_cmpstr (as_app_get_unique_id (app_tmp), ==,
+			 "system/flatpak/remote-name/app/test.desktop/x86_64/master");
 
 	/* there might be multiple apps we want to get */
 	apps = as_store_get_apps_by_id (store, "org.gnome.Software.desktop");
@@ -2981,7 +2980,7 @@ as_test_store_prefix_func (void)
 	g_assert_cmpint (apps->len, ==, 1);
 	app_tmp = g_ptr_array_index (apps, 0);
 	g_assert_cmpstr (as_app_get_id (app_tmp), ==,
-			 "flatpak-user:org.gnome.Software.desktop");
+			 "org.gnome.Software.desktop");
 }
 
 /* load a store with a origin and scope encoded in the symlink name */
@@ -3019,9 +3018,11 @@ as_test_store_flatpak_func (void)
 	apps = as_store_get_apps (store);
 	g_assert_cmpint (apps->len, ==, 1);
 	app = g_ptr_array_index (apps, 0);
-	g_assert_cmpstr (as_app_get_id (app), ==, "flatpak:test.desktop");
+	g_assert_cmpstr (as_app_get_id (app), ==, "test.desktop");
+	g_assert_cmpstr (as_app_get_unique_id (app), ==,
+			 "system/flatpak/remote-name/app/test.desktop/x86_64/master");
 	g_assert_cmpstr (as_app_get_id_filename (app), ==, "test");
-	g_assert_cmpstr (as_app_get_origin (app), ==, "flatpak_remote-name");
+	g_assert_cmpstr (as_app_get_origin (app), ==, "remote-name");
 	g_assert_cmpstr (as_app_get_source_file (app), ==, filename);
 
 	/* back to normality */
@@ -3063,8 +3064,8 @@ as_test_store_demote_func (void)
 	/* add apps */
 	store = as_store_new ();
 	as_store_set_api_version (store, 0.8);
-	as_store_add_app (store, app_desktop);
 	as_store_add_app (store, app_appdata);
+	as_store_add_app (store, app_desktop);
 
 	/* check we demoted */
 	g_assert_cmpint (as_store_get_size (store), ==, 1);
@@ -3109,8 +3110,8 @@ as_test_store_merges_func (void)
 	as_app_set_priority (app_appdata, -1);
 	as_app_set_state (app_appdata, AS_APP_STATE_INSTALLED);
 
-	as_store_add_app (store_desktop_appdata, app_desktop);
 	as_store_add_app (store_desktop_appdata, app_appdata);
+	as_store_add_app (store_desktop_appdata, app_desktop);
 
 	app_tmp = as_store_get_app_by_id (store_desktop_appdata, "gimp.desktop");
 	g_assert (app_tmp != NULL);
@@ -4191,8 +4192,17 @@ as_test_store_metadata_index_func (void)
 	as_store_add_metadata_index (store, "X-CacheID");
 	for (i = 0; i < repeats; i++) {
 		g_autofree gchar *id = g_strdup_printf ("app-%05u", i);
+		g_autofree gchar *unique_id = NULL;
 		g_autoptr(AsApp) app = as_app_new ();
 		as_app_set_id (app, id);
+		unique_id = as_utils_unique_id_build ("user",
+						      "test",
+						      "self-test",
+						      "app",
+						      id,
+						      "i386",
+						      "master");
+		as_app_set_unique_id (app, unique_id);
 		as_app_add_metadata (app, "X-CacheID", "dave.i386");
 		as_app_add_metadata (app, "baz", "dave");
 		as_store_add_app (store, app);

@@ -164,11 +164,14 @@ GPtrArray	*as_store_get_apps_by_id	(AsStore	*store,
 GPtrArray	*as_store_get_apps_by_metadata	(AsStore	*store,
 						 const gchar	*key,
 						 const gchar	*value);
+AsApp		*as_store_get_app_by_unique_id	(AsStore	*store,
+						 const gchar	*unique_id);
 AsApp		*as_store_get_app_by_id		(AsStore	*store,
 						 const gchar	*id);
 AsApp		*as_store_get_app_by_id_ignore_prefix
 						(AsStore	*store,
-						 const gchar	*id);
+						 const gchar	*id)
+G_DEPRECATED_FOR(as_store_get_app_by_id);
 AsApp		*as_store_get_app_by_id_with_fallbacks (AsStore	*store,
 						 const gchar	*id);
 AsApp		*as_store_get_app_by_pkgname	(AsStore	*store,
@@ -184,6 +187,8 @@ void		 as_store_remove_app		(AsStore	*store,
 						 AsApp		*app);
 void		 as_store_remove_app_by_id	(AsStore	*store,
 						 const gchar	*id);
+void		 as_store_remove_app_by_unique_id (AsStore	*store,
+						 const gchar	*unique_id);
 void		 as_store_remove_apps_with_veto	(AsStore	*store);
 GString		*as_store_to_xml		(AsStore	*store,
 						 AsNodeToXmlFlags flags);
