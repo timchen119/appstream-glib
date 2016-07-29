@@ -26,6 +26,7 @@
 
 #include <as-app.h>
 #include <as-app-builder.h>
+#include <as-app-ref.h>
 #include <as-bundle.h>
 #include <as-checksum.h>
 #include <as-content-rating.h>

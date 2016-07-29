@@ -28,6 +28,7 @@
 
 #include "as-app-private.h"
 #include "as-app-builder.h"
+#include "as-app-ref.h"
 #include "as-bundle-private.h"
 #include "as-translation-private.h"
 #include "as-checksum-private.h"
@@ -3923,33 +3924,40 @@ as_test_utils_spdx_token_func (void)
 }
 
 static void
-as_test_utils_unique_id_func (void)
+as_test_app_ref_func (void)
 {
-	g_autofree gchar *id1 = NULL;
-	g_autofree gchar *id2 = NULL;
-	g_autofree gchar *id3 = NULL;
+	AsAppRef *app_ref;
+	g_autofree gchar *str4 = NULL;
+	g_autoptr(AsAppRef) app_ref1 = NULL;
+	g_autoptr(AsAppRef) app_ref2 = NULL;
+	g_autoptr(AsAppRef) app_ref3 = NULL;
+	g_autoptr(AsAppRef) app_ref4 = NULL;
 
-	g_assert (as_utils_unique_id_valid ("user/flatpak/repo/app/gimp.desktop/i386/master"));
-	g_assert (as_utils_unique_id_valid ("a/a/a/a/a/a/a"));
-	g_assert (as_utils_unique_id_valid ("*/*/*/*/*/*/*"));
-	g_assert (!as_utils_unique_id_valid (NULL));
-	g_assert (!as_utils_unique_id_valid (""));
-	g_assert (!as_utils_unique_id_valid ("a/a/a/a/a/a/a/a/a/a/a/a"));
+	/* valid */
+	app_ref1 = as_app_ref_new_from_string ("user/flatpak/repo/app/gimp.desktop/i386/master");
+	g_assert (app_ref1 != NULL);
+	app_ref2 = as_app_ref_new_from_string ("a/a/a/a/a/a/a");
+	g_assert (app_ref2 != NULL);
+	app_ref3 = as_app_ref_new_from_string ("*/*/*/*/*/*/*");
+	g_assert (app_ref3 != NULL);
+	app_ref4 = as_app_ref_new ("gimp.desktop");
+	g_assert (app_ref4 != NULL);
+	str4 = as_app_ref_to_string (app_ref4);
+	g_assert_cmpstr (str4, ==, "*/*/*/*/gimp.desktop/*/*");
 
-	g_assert (as_utils_unique_id_equal ("a/a/a/a/a/a/a", "a/a/a/a/a/a/a"));
-	g_assert (as_utils_unique_id_equal ("a/a/a/a/a/a/a", "*/a/a/a/a/a/a"));
-	g_assert (as_utils_unique_id_equal ("*/a/a/a/a/a/a", "*/a/a/a/a/a/a"));
-	g_assert (!as_utils_unique_id_equal ("X/a/a/a/a/a/a", "a/a/a/a/a/a/a"));
-	g_assert (!as_utils_unique_id_equal ("X/*/*/*/*/*/*", "a/a/a/a/a/a/a"));
+	/* invalid */
+	app_ref = as_app_ref_new_from_string (NULL);
+	g_assert (app_ref == NULL);
+	app_ref = as_app_ref_new_from_string ("");
+	g_assert (app_ref == NULL);
+	app_ref = as_app_ref_new_from_string ("a/a/a/a/a/a/a/a/a/a/a/a");
+	g_assert (app_ref == NULL);
 
-	id1 = as_utils_unique_id_build ("a", "a", "a", "a", "a", "a", "a");
-	g_assert_cmpstr (id1, ==, "a/a/a/a/a/a/a");
-
-	id2 = as_utils_unique_id_build (NULL, NULL, NULL, NULL, NULL, NULL, NULL);
-	g_assert_cmpstr (id2, ==, NULL);
-
-	id3 = as_utils_unique_id_build (NULL, NULL, NULL, NULL, "gimp.desktop", NULL, NULL);
-	g_assert_cmpstr (id3, ==, "*/*/*/*/gimp.desktop/*/*");
+	/* equality */
+	g_assert (as_app_ref_equal (app_ref2, app_ref3));
+	g_assert (as_app_ref_equal (app_ref3, app_ref4));
+	g_assert (as_app_ref_equal (app_ref1, app_ref4));
+	g_assert (!as_app_ref_equal (app_ref1, app_ref2));
 }
 
 static void
@@ -4193,15 +4201,22 @@ as_test_store_metadata_index_func (void)
 	for (i = 0; i < repeats; i++) {
 		g_autofree gchar *id = g_strdup_printf ("app-%05u", i);
 		g_autofree gchar *unique_id = NULL;
-		g_autoptr(AsApp) app = as_app_new ();
+		g_autoptr(AsApp) app = NULL;
+		g_autoptr(AsAppRef) app_ref = NULL;
+
+		/* set up dummy */
+		app_ref = as_app_ref_new (id);
+		as_app_ref_set_scope (app_ref, "user");
+		as_app_ref_set_system (app_ref, "test");
+		as_app_ref_set_origin (app_ref, "self-test");
+		as_app_ref_set_kind (app_ref, "app");
+		as_app_ref_set_arch (app_ref, "i386");
+		as_app_ref_set_branch (app_ref, "master");
+		unique_id = as_app_ref_to_string (app_ref);
+
+		/* create app */
+		app = as_app_new ();
 		as_app_set_id (app, id);
-		unique_id = as_utils_unique_id_build ("user",
-						      "test",
-						      "self-test",
-						      "app",
-						      id,
-						      "i386",
-						      "master");
 		as_app_set_unique_id (app, unique_id);
 		as_app_add_metadata (app, "X-CacheID", "dave.i386");
 		as_app_add_metadata (app, "baz", "dave");
@@ -4973,6 +4988,7 @@ main (int argc, char **argv)
 	g_test_add_func ("/AppStream/image{alpha}", as_test_image_alpha_func);
 	g_test_add_func ("/AppStream/screenshot", as_test_screenshot_func);
 	g_test_add_func ("/AppStream/app", as_test_app_func);
+	g_test_add_func ("/AppStream/app{ref}", as_test_app_ref_func);
 	g_test_add_func ("/AppStream/app{builder:gettext}", as_test_app_builder_gettext_func);
 	g_test_add_func ("/AppStream/app{builder:gettext-nodomain}", as_test_app_builder_gettext_nodomain_func);
 	g_test_add_func ("/AppStream/app{builder:qt}", as_test_app_builder_qt_func);
@@ -5001,7 +5017,6 @@ main (int argc, char **argv)
 	g_test_add_func ("/AppStream/node{intltool}", as_test_node_intltool_func);
 	g_test_add_func ("/AppStream/node{sort}", as_test_node_sort_func);
 	g_test_add_func ("/AppStream/utils", as_test_utils_func);
-	g_test_add_func ("/AppStream/utils{unique-id}", as_test_utils_unique_id_func);
 	g_test_add_func ("/AppStream/utils{markup-import}", as_test_utils_markup_import_func);
 	g_test_add_func ("/AppStream/utils{version}", as_test_utils_version_func);
 	g_test_add_func ("/AppStream/utils{guid}", as_test_utils_guid_func);

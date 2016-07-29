@@ -129,17 +129,6 @@ gchar		*as_utils_version_parse		(const gchar	*version);
 guint		 as_utils_string_replace	(GString	*string,
 						 const gchar	*search,
 						 const gchar	*replace);
-gboolean	 as_utils_unique_id_valid	(const gchar	*unique_id);
-gboolean	 as_utils_unique_id_equal	(const gchar	*unique_id1,
-						 const gchar	*unique_id2);
-gchar		*as_utils_unique_id_build	(const gchar	*scope,
-						 const gchar	*system,
-						 const gchar	*origin,
-						 const gchar	*kind,
-						 const gchar	*id,
-						 const gchar	*arch,
-						 const gchar	*branch);
-gchar		**as_utils_unique_id_split	(const gchar	*unique_id);
 
 G_END_DECLS
 

@@ -70,6 +70,7 @@ libappstream_glib_include_HEADERS =				\
 	appstream-glib.h					\
 	as-app.h						\
 	as-app-builder.h					\
+	as-app-ref.h						\
 	as-bundle.h						\
 	as-checksum.h						\
 	as-content-rating.h					\
@@ -98,6 +99,8 @@ libappstream_glib_la_SOURCES =					\
 	as-app-builder.c					\
 	as-app-inf.c						\
 	as-app-private.h					\
+	as-app-ref.c						\
+	as-app-ref.h						\
 	as-app-validate.c					\
 	as-bundle.c						\
 	as-bundle-private.h					\
@@ -197,6 +200,8 @@ introspection_sources =						\
 	as-app.c						\
 	as-app-validate.c					\
 	as-app.h						\
+	as-app-ref.c						\
+	as-app-ref.h						\
 	as-bundle.c						\
 	as-bundle.h						\
 	as-checksum.c						\

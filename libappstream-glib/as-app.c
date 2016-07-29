@@ -38,6 +38,7 @@
 #include <fnmatch.h>
 
 #include "as-app-private.h"
+#include "as-app-ref.h"
 #include "as-bundle-private.h"
 #include "as-content-rating-private.h"
 #include "as-enums.h"
@@ -481,14 +482,9 @@ as_app_get_unique_id (AsApp *app)
 
 	/* log as we ought to be doing this manually */
 	if (priv->unique_id == NULL && priv->id != NULL) {
+		g_autoptr(AsAppRef) app_ref = as_app_ref_new (priv->id);
 		g_debug ("autocreating dummy unique ID for %s", priv->id);
-		priv->unique_id = as_utils_unique_id_build (NULL,
-							    NULL,
-							    NULL,
-							    NULL,
-							    priv->id,
-							    NULL,
-							    NULL);
+		priv->unique_id = as_app_ref_to_string (app_ref);
 	}
 
 	return priv->unique_id;
@@ -1736,14 +1732,6 @@ void
 as_app_set_unique_id (AsApp *app, const gchar *unique_id)
 {
 	AsAppPrivate *priv = GET_PRIVATE (app);
-
-	/* check for validity */
-	if (!as_utils_unique_id_valid (unique_id)) {
-		g_warning ("unique ID %s is not valid!", unique_id);
-		return;
-	}
-
-	/* save full ID */
 	g_free (priv->unique_id);
 	priv->unique_id = g_strdup (unique_id);
 }

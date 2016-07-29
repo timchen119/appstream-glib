@@ -37,6 +37,7 @@
 #include "config.h"
 
 #include "as-app-private.h"
+#include "as-app-ref.h"
 #include "as-node-private.h"
 #include "as-problem.h"
 #include "as-profile.h"
@@ -484,6 +485,7 @@ as_store_get_app_by_unique_id (AsStore *store, const gchar *unique_id)
 	AsApp *app;
 	AsStorePrivate *priv = GET_PRIVATE (store);
 	guint i;
+	g_autoptr(AsAppRef) app_ref1 = NULL;
 
 	g_return_val_if_fail (AS_IS_STORE (store), NULL);
 
@@ -497,9 +499,12 @@ as_store_get_app_by_unique_id (AsStore *store, const gchar *unique_id)
 		return NULL;
 
 	/* find all the apps matching this unique id */
+	app_ref1 = as_app_ref_new_from_string (unique_id);
 	for (i = 0; i < priv->array->len; i++) {
+		g_autoptr(AsAppRef) app_ref2 = NULL;
 		app = g_ptr_array_index (priv->array, i);
-		if (as_utils_unique_id_equal (as_app_get_unique_id (app), unique_id))
+		app_ref2 = as_app_ref_new_from_string (as_app_get_unique_id (app));
+		if (as_app_ref_equal (app_ref1, app_ref2))
 			return app;
 	}
 	return NULL;
@@ -1164,6 +1169,7 @@ as_store_from_root (AsStore *store,
 		g_autofree gchar *app_branch = NULL;
 		g_autofree gchar *unique_id = NULL;
 		g_autoptr(AsApp) app = NULL;
+		g_autoptr(AsAppRef) app_ref = NULL;
 		g_autoptr(GError) error_local = NULL;
 
 		/* not a proper app */
@@ -1218,13 +1224,14 @@ as_store_from_root (AsStore *store,
 		 * we need to use the unique-id to disambiguate the different
 		 * applications.
 		 */
-		unique_id = as_utils_unique_id_build (app_scope,
-						      app_system,
-						      app_origin,
-						      _as_app_get_kind_unique (app),
-						      as_app_get_id (app),
-						      app_arch,
-						      app_branch);
+		app_ref = as_app_ref_new (as_app_get_id (app));
+		as_app_ref_set_scope (app_ref, app_scope);
+		as_app_ref_set_system (app_ref, app_system);
+		as_app_ref_set_origin (app_ref, app_origin);
+		as_app_ref_set_kind (app_ref, _as_app_get_kind_unique (app));
+		as_app_ref_set_arch (app_ref, app_arch);
+		as_app_ref_set_branch (app_ref, app_branch);
+		unique_id = as_app_ref_to_string (app_ref);
 		as_app_set_unique_id (app, unique_id);
 
 		if (app_origin != NULL)
@@ -2375,6 +2382,8 @@ as_store_load_installed (AsStore *store,
 		g_autofree gchar *filename = NULL;
 		g_autofree gchar *unique_id = NULL;
 		g_autoptr(AsApp) app = NULL;
+		g_autoptr(AsAppRef) app_ref = NULL;
+
 		filename = g_build_filename (path, tmp, NULL);
 		if (!as_store_load_installed_file_is_valid (filename))
 			continue;
@@ -2408,13 +2417,10 @@ as_store_load_installed (AsStore *store,
 			continue;
 
 		/* set the correct scope */
-		unique_id = as_utils_unique_id_build (scope, /* scope */
-						      NULL, /* system */
-						      NULL, /* origin */
-						      _as_app_get_kind_unique (app),
-						      as_app_get_id (app),
-						      NULL, /* arch */
-						      NULL); /* branch */
+		app_ref = as_app_ref_new (as_app_get_id (app));
+		as_app_ref_set_scope (app_ref, scope);
+		as_app_ref_set_kind (app_ref, _as_app_get_kind_unique (app));
+		unique_id = as_app_ref_to_string (app_ref);
 		as_app_set_unique_id (app, unique_id);
 
 		/* as these are added from installed AppData files then all the
