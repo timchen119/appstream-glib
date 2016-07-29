@@ -92,6 +92,7 @@ typedef struct
 	gchar		*icon_path;
 	gchar		*id_filename;
 	gchar		*id;
+	gchar		*unique_id;
 	gchar		*origin;
 	gchar		*project_group;
 	gchar		*project_license;
@@ -361,6 +362,7 @@ as_app_finalize (GObject *object)
 	g_free (priv->icon_path);
 	g_free (priv->id_filename);
 	g_free (priv->id);
+	g_free (priv->unique_id);
 	g_free (priv->project_group);
 	g_free (priv->project_license);
 	g_free (priv->metadata_license);
@@ -460,6 +462,36 @@ as_app_get_id (AsApp *app)
 {
 	AsAppPrivate *priv = GET_PRIVATE (app);
 	return priv->id;
+}
+
+/**
+ * as_app_get_unique_id:
+ * @app: a #AsApp instance.
+ *
+ * Gets the unique ID value.
+ *
+ * Returns: the ID, e.g. "user/flatpak/gnome-apps-nightly/app/gimp.desktop/i386/master"
+ *
+ * Since: 0.6.1
+ **/
+const gchar *
+as_app_get_unique_id (AsApp *app)
+{
+	AsAppPrivate *priv = GET_PRIVATE (app);
+
+	/* log as we ought to be doing this manually */
+	if (priv->unique_id == NULL && priv->id != NULL) {
+		g_debug ("autocreating dummy unique ID for %s", priv->id);
+		priv->unique_id = as_utils_unique_id_build (NULL,
+							    NULL,
+							    NULL,
+							    NULL,
+							    priv->id,
+							    NULL,
+							    NULL);
+	}
+
+	return priv->unique_id;
 }
 
 /**
@@ -1686,6 +1718,32 @@ as_app_set_id (AsApp *app, const gchar *id)
 	tmp = g_strrstr_len (priv->id_filename, -1, ".");
 	if (tmp != NULL)
 		*tmp = '\0';
+}
+
+/**
+ * as_app_set_unique_id:
+ * @app: a #AsApp instance.
+ * @unique_id: the new unique application ID, e.g.
+ *      "user/flatpak/gnome-apps-nightly/app/gimp.desktop/i386/master"
+ *
+ * Sets a new unique ID.
+ *
+ * Since: 0.6.1
+ **/
+void
+as_app_set_unique_id (AsApp *app, const gchar *unique_id)
+{
+	AsAppPrivate *priv = GET_PRIVATE (app);
+
+	/* check for validity */
+	if (!as_utils_unique_id_valid (unique_id)) {
+		g_warning ("unique ID %s is not valid!", unique_id);
+		return;
+	}
+
+	/* save full ID */
+	g_free (priv->unique_id);
+	priv->unique_id = g_strdup (unique_id);
 }
 
 /**

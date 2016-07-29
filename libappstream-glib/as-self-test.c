@@ -3922,6 +3922,36 @@ as_test_utils_spdx_token_func (void)
 }
 
 static void
+as_test_utils_unique_id_func (void)
+{
+	g_autofree gchar *id1 = NULL;
+	g_autofree gchar *id2 = NULL;
+	g_autofree gchar *id3 = NULL;
+
+	g_assert (as_utils_unique_id_valid ("user/flatpak/repo/app/gimp.desktop/i386/master"));
+	g_assert (as_utils_unique_id_valid ("a/a/a/a/a/a/a"));
+	g_assert (as_utils_unique_id_valid ("*/*/*/*/*/*/*"));
+	g_assert (!as_utils_unique_id_valid (NULL));
+	g_assert (!as_utils_unique_id_valid (""));
+	g_assert (!as_utils_unique_id_valid ("a/a/a/a/a/a/a/a/a/a/a/a"));
+
+	g_assert (as_utils_unique_id_equal ("a/a/a/a/a/a/a", "a/a/a/a/a/a/a"));
+	g_assert (as_utils_unique_id_equal ("a/a/a/a/a/a/a", "*/a/a/a/a/a/a"));
+	g_assert (as_utils_unique_id_equal ("*/a/a/a/a/a/a", "*/a/a/a/a/a/a"));
+	g_assert (!as_utils_unique_id_equal ("X/a/a/a/a/a/a", "a/a/a/a/a/a/a"));
+	g_assert (!as_utils_unique_id_equal ("X/*/*/*/*/*/*", "a/a/a/a/a/a/a"));
+
+	id1 = as_utils_unique_id_build ("a", "a", "a", "a", "a", "a", "a");
+	g_assert_cmpstr (id1, ==, "a/a/a/a/a/a/a");
+
+	id2 = as_utils_unique_id_build (NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+	g_assert_cmpstr (id2, ==, NULL);
+
+	id3 = as_utils_unique_id_build (NULL, NULL, NULL, NULL, "gimp.desktop", NULL, NULL);
+	g_assert_cmpstr (id3, ==, "*/*/*/*/gimp.desktop/*/*");
+}
+
+static void
 as_test_utils_markup_import_func (void)
 {
 	guint i;
@@ -4961,6 +4991,7 @@ main (int argc, char **argv)
 	g_test_add_func ("/AppStream/node{intltool}", as_test_node_intltool_func);
 	g_test_add_func ("/AppStream/node{sort}", as_test_node_sort_func);
 	g_test_add_func ("/AppStream/utils", as_test_utils_func);
+	g_test_add_func ("/AppStream/utils{unique-id}", as_test_utils_unique_id_func);
 	g_test_add_func ("/AppStream/utils{markup-import}", as_test_utils_markup_import_func);
 	g_test_add_func ("/AppStream/utils{version}", as_test_utils_version_func);
 	g_test_add_func ("/AppStream/utils{guid}", as_test_utils_guid_func);

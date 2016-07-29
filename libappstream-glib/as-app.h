@@ -321,6 +321,7 @@ GPtrArray	*as_app_get_vetos		(AsApp		*app);
 const gchar	*as_app_get_icon_path		(AsApp		*app);
 const gchar	*as_app_get_id_filename		(AsApp		*app);
 const gchar	*as_app_get_id			(AsApp		*app);
+const gchar	*as_app_get_unique_id		(AsApp		*app);
 const gchar	*as_app_get_id_no_prefix	(AsApp		*app);
 const gchar	*as_app_get_pkgname_default	(AsApp		*app);
 const gchar	*as_app_get_source_pkgname	(AsApp		*app);
@@ -361,6 +362,8 @@ gboolean	 as_app_has_quirk		(AsApp		*app,
 /* setters */
 void		 as_app_set_id			(AsApp		*app,
 						 const gchar	*id);
+void		 as_app_set_unique_id		(AsApp		*app,
+						 const gchar	*unique_id);
 void		 as_app_set_kind		(AsApp		*app,
 						 AsAppKind	 kind);
 void		 as_app_set_source_kind		(AsApp		*app,
