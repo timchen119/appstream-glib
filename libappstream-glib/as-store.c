@@ -1004,38 +1004,59 @@ as_store_add_app (AsStore *store, AsApp *app)
 }
 
 static void
-as_store_match_addons (AsStore *store)
+as_store_match_addons_app (AsStore *store, AsApp *app)
 {
-	AsApp *app;
-	AsApp *parent;
-	AsStorePrivate *priv = GET_PRIVATE (store);
 	GPtrArray *plugin_ids;
-	const gchar *tmp;
 	guint i;
 	guint j;
-	g_autoptr(AsProfileTask) ptask = NULL;
+	g_autoptr(AsAppRef) app_ref = NULL;
 
 	/* profile */
-	ptask = as_profile_start_literal (priv->profile, "AsStore:match-addons");
+	plugin_ids = as_app_get_extends (app);
+	if (plugin_ids->len == 0) {
+		g_warning ("%s was of type addon but had no extends",
+			   as_app_get_id (app));
+		return;
+	}
+	app_ref = as_app_ref_new_from_string (as_app_get_unique_id (app));
+	if (app_ref == NULL)
+		return;
+	for (j = 0; j < plugin_ids->len; j++) {
+		g_autoptr(GPtrArray) parents = NULL;
+		const gchar *tmp = g_ptr_array_index (plugin_ids, j);
 
-	for (i = 0; i < priv->array->len; i++) {
-		app = g_ptr_array_index (priv->array, i);
-		if (as_app_get_kind (app) != AS_APP_KIND_ADDON)
-			continue;
-		plugin_ids = as_app_get_extends (app);
-		if (plugin_ids->len == 0) {
-			g_warning ("%s was of type addon but had no extends",
-				   as_app_get_id (app));
-			continue;
-		}
-		for (j = 0; j < plugin_ids->len; j++) {
-			tmp = g_ptr_array_index (plugin_ids, j);
-//FIXME -- restrict to kind?
-			parent = as_store_get_app_by_id (store, tmp);
-			if (parent == NULL)
+		/* restrict to same scope and system */
+		parents = as_store_get_apps_by_id (store, tmp);
+		for (i = 0; i < parents->len;  i++) {
+			AsApp *parent = g_ptr_array_index (parents, i);
+			g_autoptr(AsAppRef) app_ref_parent = NULL;
+			app_ref_parent = as_app_ref_new_from_string (as_app_get_unique_id (parent));
+			if (app_ref_parent == NULL)
+				continue;
+			if (g_strcmp0 (as_app_ref_get_scope (app_ref),
+				       as_app_ref_get_scope (app_ref_parent)) != 0)
+				continue;
+			if (g_strcmp0 (as_app_ref_get_system (app_ref),
+				       as_app_ref_get_system (app_ref_parent)) != 0)
 				continue;
 			as_app_add_addon (parent, app);
 		}
+	}
+}
+
+static void
+as_store_match_addons (AsStore *store)
+{
+	AsStorePrivate *priv = GET_PRIVATE (store);
+	guint i;
+	g_autoptr(AsProfileTask) ptask = NULL;
+
+	ptask = as_profile_start_literal (priv->profile, "AsStore:match-addons");
+	for (i = 0; i < priv->array->len; i++) {
+		AsApp *app = g_ptr_array_index (priv->array, i);
+		if (as_app_get_kind (app) != AS_APP_KIND_ADDON)
+			continue;
+		as_store_match_addons_app (store, app);
 	}
 }
 
