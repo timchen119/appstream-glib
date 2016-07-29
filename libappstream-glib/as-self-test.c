@@ -2997,9 +2997,6 @@ as_test_store_flatpak_func (void)
 	g_autoptr(AsStore) store = NULL;
 	g_autoptr(GFile) file = NULL;
 
-	/* make throws us under a bus, yet again */
-	g_setenv ("AS_SELF_TEST_PREFIX_DELIM", "_", TRUE);
-
 	/* load a symlinked file to the store */
 	store = as_store_new ();
 	filename_root = as_test_get_filename (".");
@@ -3025,9 +3022,6 @@ as_test_store_flatpak_func (void)
 	g_assert_cmpstr (as_app_get_id_filename (app), ==, "test");
 	g_assert_cmpstr (as_app_get_origin (app), ==, "remote-name");
 	g_assert_cmpstr (as_app_get_source_file (app), ==, filename);
-
-	/* back to normality */
-	g_unsetenv ("AS_SELF_TEST_PREFIX_DELIM");
 }
 
 /* demote the .desktop "application" to an addon */
