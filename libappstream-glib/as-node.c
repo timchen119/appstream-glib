@@ -1327,7 +1327,7 @@ as_node_insert_line_breaks (const gchar *text, guint break_len)
 	gssize new_len;
 
 	/* allocate long enough for the string, plus the extra newlines */
-	new_len = (gssize) strlen (text) * (break_len + 1) / break_len;
+	new_len = (gssize) (strlen (text) * (break_len + 1) / break_len);
 	str = g_string_new_len (NULL, new_len + 2);
 	g_string_append (str, "\n");
 	g_string_append (str, text);
