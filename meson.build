@@ -1,0 +1,124 @@
+project('appstream-glib', 'c',
+        version : '0.6.5',
+        license : 'LGPL-2.1+',
+        default_options : ['b_asneeded=True', 'b_lundef=True'],
+        meson_version : '>=0.34.0')
+
+as_version = meson.project_version()
+varr = as_version.split('.')
+as_major_version = varr[0]
+as_minor_version = varr[1]
+as_micro_version = varr[2]
+
+conf = configuration_data()
+conf.set('AS_MAJOR_VERSION_CONF', as_major_version)
+conf.set('AS_MINOR_VERSION_CONF', as_minor_version)
+conf.set('AS_MICRO_VERSION_CONF', as_micro_version)
+conf.set('PACKAGE_VERSION', '"@0@"'.format(as_version))
+
+# this refers to the plugin API version
+# this is not in any way related to a package or soname version
+as_plugin_version = '2'
+
+# libtool versioning - this applies to libpackagekit
+#
+# See http://sources.redhat.com/autobook/autobook/autobook_91.html#SEC91 for details
+#
+# - If interfaces have been changed or added, but binary compatibility
+#   has been preserved, change:
+#      CURRENT += 1
+#      REVISION = 0
+#      AGE += 1
+# - If binary compatibility has been broken (eg removed or changed
+#   interfaces), change:
+#      CURRENT += 1
+#      REVISION = 0
+#      AGE = 0
+# - If the interface is the same as the previous version, but bugs are
+#   fixed, change:
+#      REVISION += 1
+lt_current = '8'
+lt_revision = '10'
+lt_age = '0'
+lt_version = '@0@.@1@.@2@'.format(lt_current, lt_age, lt_revision)
+
+glib_ver = '>= 2.45.8'
+uuid = dependency('uuid')
+glib = dependency('glib-2.0', version : glib_ver)
+gmodule = dependency('gmodule-2.0', version : glib_ver)
+giounix = dependency('gio-unix-2.0', version : glib_ver)
+libarchive = dependency('libarchive')
+soup = dependency('libsoup-2.4', version : '>= 2.51.92')
+gdk = dependency('gdk-3.0')
+gdkpixbuf = dependency('gdk-pixbuf-2.0', version : '>= 2.31.5')
+libgcab = dependency('libgcab-1.0', required : false)
+
+# builder (default enabled)
+if get_option('enable-builder')
+  gtk = dependency('gtk+-3.0')
+  gmodule = dependency('gmodule-2.0')
+  gcab = find_program('gcab')
+  if get_option('enable-rpm')
+    rpm = dependency('rpm')
+    conf.set('HAVE_RPM', 1)
+  endif
+  if get_option('enable-alpm')
+    alpm = dependency('libalpm')
+    conf.set('HAVE_ALPM', 1)
+  endif
+  if get_option('enable-fonts')
+    conf.set('HAVE_FONTS', 1)
+    freetype = dependency('freetype2', version : '>= 9.10.0')
+    fontconfig = dependency('fontconfig')
+  endif
+endif
+if get_option('enable-dep11')
+  yaml = dependency('yaml-0.1')
+  conf.set('AS_BUILD_DEP11', 1)
+else
+  yaml = dependency('yaml-0.1', required : false)
+endif
+
+# use gperf for faster string -> enum matching
+gperf = find_program('gperf', required : false)
+if gperf.found()
+  conf.set('HAVE_GPERF', 1)
+endif
+
+gnome = import('gnome')
+
+conf.set_quoted('GETTEXT_PACKAGE', meson.project_version())
+conf.set_quoted('LOCALEDIR', get_option('localedir'))
+configure_file(
+  output : 'config.h',
+  configuration : conf
+)
+top_build_incdir = include_directories(meson.current_build_dir())
+
+add_global_arguments('-DAS_COMPILATION', language : 'c')
+
+subdir('libappstream-glib')
+subdir('data')
+
+if get_option('enable-builder')
+  # depends on data
+  subdir('libappstream-builder')
+endif
+
+# depends on libappstream-builder
+subdir('client')
+
+archiver = find_program('git', required : false)
+if archiver.found()
+  run_target('dist', 'git', 'archive', '--prefix=appstream-glib/',
+             'HEAD',
+             '--output', 'appstream-glib-' + as_version + '.tar.gz')
+
+#-version=`./meson.py -v`
+#-git archive --prefix meson-${version}/ HEAD | gzip > meson_${version}.tar.gz
+
+else
+  message('git-archive-all not found, you will not be able to run `ninja dist`')
+  message('Install git-archive-all with pip:')
+  message('   $ pip install git-archive-all')
+endif
