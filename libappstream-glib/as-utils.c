@@ -1855,3 +1855,71 @@ as_utils_unique_id_equal (const gchar *unique_id1, const gchar *unique_id2)
 	}
 	return TRUE;
 }
+
+/**
+ * as_utils_unique_id_hash_safe:
+ * @v: a unique ID
+ *
+ * Converts a unique-id to a hash value.
+ *
+ * This function implements the widely used DJB hash on the ID subset of the
+ * unique-id string.
+ *
+ * It can be passed to g_hash_table_new() as the hash_func parameter,
+ * when using non-NULL strings or unique_ids as keys in a GHashTable.
+ *
+ * Returns: a hash value corresponding to the key
+ *
+ * Since: 0.6.2
+ */
+guint
+as_utils_unique_id_hash_safe (gconstpointer v)
+{
+	const gchar *str = v;
+	gsize i;
+	guint hash = 5381;
+	guint section_cnt = 0;
+
+	/* not a unique ID */
+	if (!as_utils_unique_id_valid (v))
+		return g_str_hash (v);
+
+	/* only include the app-id */
+	for (i = 0; str[i] != '\0'; i++) {
+		if (str[i] == '/') {
+			if (++section_cnt > 4)
+				break;
+			continue;
+		}
+		if (section_cnt < 4)
+			continue;
+		hash = (guint) ((hash << 5) + hash) + (guint) (str[i]);
+	}
+	return hash;
+}
+
+/**
+ * as_utils_unique_id_equal_safe:
+ * @v1: a unique ID
+ * @v2: another unique ID
+ *
+ * Compares two unique_id's for equality and returns TRUE if they are equal.
+ * It can be passed to g_hash_table_new() as the key_equal_func parameter,
+ * when using non-NULL strings or unique-id's as keys in a GHashTable.
+ *
+ * Note that this function is primarily meant as a hash table comparison
+ * function. For a general-purpose, unique-id specific comparison function,
+ * see g_strcmp0().
+ *
+ * Returns: %TRUE if the two keys are equal
+ *
+ * Since: 0.6.2
+ */
+gboolean
+as_utils_unique_id_equal_safe (gconstpointer v1, gconstpointer v2)
+{
+	if (as_utils_unique_id_valid (v1) &&
+	    as_utils_unique_id_valid (v2))
+		return as_utils_unique_id_equal (v1, v2);
+	return g_str_equal (v1, v2);
+}

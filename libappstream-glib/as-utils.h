@@ -141,6 +141,9 @@ gchar		*as_utils_unique_id_build	(AsAppScope	 scope,
 gboolean	 as_utils_unique_id_equal	(const gchar	*unique_id1,
 						 const gchar	*unique_id2);
 gboolean	 as_utils_unique_id_valid	(const gchar	*unique_id);
+guint		 as_utils_unique_id_hash_safe	(gconstpointer	 v);
+gboolean	 as_utils_unique_id_equal_safe	(gconstpointer	 v1,
+						 gconstpointer	 v2);
 
 G_END_DECLS
 
