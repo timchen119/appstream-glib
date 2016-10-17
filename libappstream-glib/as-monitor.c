@@ -356,6 +356,7 @@ as_monitor_file_changed_cb (GFileMonitor *mon,
 		}
 		break;
 	case G_FILE_MONITOR_EVENT_CHANGED:
+	case G_FILE_MONITOR_EVENT_ATTRIBUTE_CHANGED:
 		/* if the file is not pending and not a temp file, add */
 		if (_g_ptr_array_str_find (priv->queue_add, filename) == NULL &&
 		    _g_ptr_array_str_find (priv->queue_temp, filename) == NULL) {
