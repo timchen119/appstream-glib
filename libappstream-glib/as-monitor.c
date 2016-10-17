@@ -361,6 +361,7 @@ as_monitor_file_changed_cb (GFileMonitor *mon,
 		    _g_ptr_array_str_find (priv->queue_temp, filename) == NULL) {
 			_g_ptr_array_str_add (priv->queue_changed, filename);
 		}
+		as_monitor_process_pending_trigger (monitor);
 		break;
 	case G_FILE_MONITOR_EVENT_RENAMED:
 		/* a temp file that was just created and atomically
