@@ -65,6 +65,7 @@ struct _AsStoreClass
  * @AS_STORE_LOAD_FLAG_IGNORE_INVALID:		Ignore invalid files
  * @AS_STORE_LOAD_FLAG_ONLY_UNCOMPRESSED:	Ignore compressed files
  * @AS_STORE_LOAD_FLAG_ONLY_MERGE_APPS:		Ignore non-wildcard matches
+ * @AS_STORE_LOAD_FLAG_WATCH_MISSING_PATHS:	Monitor paths even if they do not exist
  *
  * The flags to use when loading the store.
  **/
@@ -81,6 +82,7 @@ typedef enum {
 	AS_STORE_LOAD_FLAG_IGNORE_INVALID	= 1 << 8,	/* Since: 0.5.8 */
 	AS_STORE_LOAD_FLAG_ONLY_UNCOMPRESSED	= 1 << 9,	/* Since: 0.6.4 */
 	AS_STORE_LOAD_FLAG_ONLY_MERGE_APPS	= 1 << 10,	/* Since: 0.6.4 */
+	AS_STORE_LOAD_FLAG_WATCH_MISSING_PATHS	= 1 << 11,	/* Since: 0.6.45 */
 	/*< private >*/
 	AS_STORE_LOAD_FLAG_LAST
 } AsStoreLoadFlags;

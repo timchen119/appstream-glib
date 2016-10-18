@@ -114,6 +114,14 @@ static gboolean	as_store_from_file_internal (AsStore *store,
 					     GCancellable *cancellable,
 					     GError **error);
 
+static gboolean as_store_load_app_info_file (AsStore *store,
+					     AsAppScope scope,
+					     const gchar *path_xml,
+					     const gchar *arch,
+					     AsStoreLoadFlags flags,
+					     GCancellable *cancellable,
+					     GError **error);
+
 static void
 as_store_finalize (GObject *object)
 {
@@ -1547,6 +1555,61 @@ as_store_remove_by_source_file (AsStore *store, const gchar *filename)
 	as_store_perhaps_emit_changed (store, "remove-by-source-file");
 }
 
+static gboolean
+as_store_search_dir (AsStore *store,
+		     AsAppScope scope,
+		     const gchar *path,
+		     const gchar *arch,
+		     AsStoreLoadFlags flags,
+		     GCancellable *cancellable,
+		     GError **error)
+{
+	AsStorePrivate *priv = GET_PRIVATE (store);
+	const gchar *tmp;
+	g_autoptr(GDir) dir = NULL;
+	g_autoptr(GError) error_local = NULL;
+
+	dir = g_dir_open (path, 0, &error_local);
+	if (dir == NULL) {
+		if (flags & AS_STORE_LOAD_FLAG_IGNORE_INVALID) {
+			g_warning ("ignoring invalid AppStream path %s: %s",
+				   path, error_local->message);
+			return TRUE;
+		}
+		g_set_error (error,
+			     AS_STORE_ERROR,
+			     AS_STORE_ERROR_FAILED,
+			     "Failed to open %s: %s",
+			     path, error_local->message);
+		return FALSE;
+	}
+
+	while ((tmp = g_dir_read_name (dir)) != NULL) {
+		GError *error_store = NULL;
+		g_autofree gchar *filename_md = NULL;
+		if (g_strcmp0 (tmp, "icons") == 0)
+			continue;
+		filename_md = g_build_filename (path, tmp, NULL);
+		if (!as_store_load_app_info_file (store,
+						  scope,
+						  filename_md,
+						  arch,
+						  flags,
+						  cancellable,
+						  &error_store)) {
+			if (flags & AS_STORE_LOAD_FLAG_IGNORE_INVALID) {
+				g_warning ("Ignoring invalid AppStream file %s: %s",
+					   filename_md, error_store->message);
+				g_clear_error (&error_store);
+			} else {
+				g_propagate_error (error, error_store);
+				return FALSE;
+			}
+		}
+	}
+	return TRUE;
+}
+
 static void
 as_store_watch_source_added (AsStore *store, const gchar *filename)
 {
@@ -1556,9 +1619,26 @@ as_store_watch_source_added (AsStore *store, const gchar *filename)
 	g_autoptr(GError) error = NULL;
 	g_autoptr(GFile) file = NULL;
 
-	/* ignore directories */
-	if (!g_file_test (filename, G_FILE_TEST_IS_REGULAR))
+	/* search added directories */
+	if (!g_file_test (filename, G_FILE_TEST_IS_REGULAR)) {
+		g_debug ("parsing files from directory %s", filename);
+		path_data = g_hash_table_lookup (priv->appinfo_dirs, filename);
+		if (path_data == NULL) {
+			g_warning ("no path data for %s", filename);
+			return;
+		}
+
+		if (!as_store_search_dir (store, path_data->scope,
+					  filename,
+					  path_data->arch,
+					  AS_STORE_LOAD_FLAG_IGNORE_INVALID,
+					  NULL, /* cancellable */
+					  &error)) {
+			g_warning ("failed to search dir: %s", error->message);
+		}
+
 		return;
+	}
 
 	/* we helpfully saved this */
 	dirname = g_path_get_dirname (filename);
@@ -1654,11 +1734,6 @@ as_store_add_path_data (AsStore *store,
 {
 	AsStorePrivate *priv = GET_PRIVATE (store);
 	AsStorePathData *path_data;
-
-	/* don't scan non-existent directories */
-	if (!g_file_test (path, G_FILE_TEST_EXISTS)) {
-		return;
-	}
 
 	/* check not already exists */
 	path_data = g_hash_table_lookup (priv->appinfo_dirs, path);
@@ -2455,45 +2530,12 @@ as_store_load_app_info (AsStore *store,
 	tok = as_store_changed_inhibit (store);
 
 	/* search all files */
-	if (!g_file_test (path, G_FILE_TEST_EXISTS))
+	if (g_file_test (path, G_FILE_TEST_EXISTS)) {
+		if (!as_store_search_dir (store, scope, path, arch, flags,
+					  cancellable, error))
+			return FALSE;
+	} else if ((flags & AS_STORE_LOAD_FLAG_WATCH_MISSING_PATHS) == 0) {
 		return TRUE;
-	dir = g_dir_open (path, 0, &error_local);
-	if (dir == NULL) {
-		if (flags & AS_STORE_LOAD_FLAG_IGNORE_INVALID) {
-			g_warning ("ignoring invalid AppStream path %s: %s",
-				   path, error_local->message);
-			return TRUE;
-		}
-		g_set_error (error,
-			     AS_STORE_ERROR,
-			     AS_STORE_ERROR_FAILED,
-			     "Failed to open %s: %s",
-			     path, error_local->message);
-		return FALSE;
-	}
-
-	while ((tmp = g_dir_read_name (dir)) != NULL) {
-		GError *error_store = NULL;
-		g_autofree gchar *filename_md = NULL;
-		if (g_strcmp0 (tmp, "icons") == 0)
-			continue;
-		filename_md = g_build_filename (path, tmp, NULL);
-		if (!as_store_load_app_info_file (store,
-						  scope,
-						  filename_md,
-						  arch,
-						  flags,
-						  cancellable,
-						  &error_store)) {
-			if (flags & AS_STORE_LOAD_FLAG_IGNORE_INVALID) {
-				g_warning ("Ignoring invalid AppStream file %s: %s",
-					   filename_md, error_store->message);
-				g_clear_error (&error_store);
-			} else {
-				g_propagate_error (error, error_store);
-				return FALSE;
-			}
-		}
 	}
 
 	/* watch the directories for changes */
@@ -2715,7 +2757,8 @@ as_store_search_app_info (AsStore *store,
 					 path,
 					 supported_kinds[i],
 					 NULL);
-		if (!g_file_test (dest, G_FILE_TEST_EXISTS))
+		if (!g_file_test (dest, G_FILE_TEST_EXISTS) &&
+		    (flags & AS_STORE_LOAD_FLAG_WATCH_MISSING_PATHS) == 0)
 			continue;
 		if (!as_store_load_app_info (store, scope, dest, NULL,
 					     flags, cancellable, error))
@@ -2783,6 +2826,8 @@ as_store_search_per_system (AsStore *store,
 	if ((flags & AS_STORE_LOAD_FLAG_APP_INFO_SYSTEM) > 0) {
 		g_autofree gchar *dest1 = NULL;
 		g_autofree gchar *dest2 = NULL;
+		/* watch these paths even if they do not exist */
+		flags |= AS_STORE_LOAD_FLAG_WATCH_MISSING_PATHS;
 		dest1 = g_build_filename (LOCALSTATEDIR, "lib", "app-info", NULL);
 		if (!as_store_search_app_info (store, flags, AS_APP_SCOPE_SYSTEM, dest1,
 					       cancellable, error))
