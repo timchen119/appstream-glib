@@ -1119,8 +1119,10 @@ as_store_add_app (AsStore *store, AsApp *app)
 
 		/* this new item has a higher priority than the one we've
 		 * previously stored */
-		g_debug ("removing %s entry: %s",
+		g_debug ("removing %s entry as %s is better: %s:%s",
 			 as_app_source_kind_to_string (as_app_get_source_kind (item)),
+			 as_app_source_kind_to_string (as_app_get_source_kind (app)),
+			 as_app_get_unique_id (app),
 			 as_app_get_unique_id (item));
 		as_store_remove_app (store, item);
 	}
