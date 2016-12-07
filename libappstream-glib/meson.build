@@ -7,7 +7,7 @@ cargs = [
 
 deps = [glib, gdkpixbuf, giounix, libarchive, soup, uuid, libgcab]
 
-if yaml.found()
+if get_option('enable-dep11')
   deps += yaml
 endif
 
@@ -214,6 +214,7 @@ gnome.generate_gir(asglib,
   symbol_prefix : 'as_',
   identifier_prefix : 'As',
   export_packages : 'appstream-glib',
+  dependencies : deps,
   includes : [
     'GObject-2.0',
     'Gio-2.0',

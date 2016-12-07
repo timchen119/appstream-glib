@@ -75,8 +75,6 @@ endif
 if get_option('enable-dep11')
   yaml = dependency('yaml-0.1')
   conf.set('AS_BUILD_DEP11', 1)
-else
-  yaml = dependency('yaml-0.1', required : false)
 endif
 
 # use gperf for faster string -> enum matching

@@ -8,7 +8,17 @@ asbuilder_cargs = [
   ),
 ]
 
-deps = [glib, gmodule, gdkpixbuf, libarchive, soup, yaml]
+deps = [
+  glib,
+  gmodule,
+  gdkpixbuf,
+  libarchive,
+  soup
+]
+
+if get_option('enable-dep11')
+  deps = deps + [yaml]
+endif
 
 if rpm.found()
   deps = deps + [rpm]
