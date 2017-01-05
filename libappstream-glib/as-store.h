@@ -121,9 +121,9 @@ typedef enum {
  * The flags to use when local files are added or removed from the store.
  **/
 typedef enum {
-	AS_STORE_WATCH_FLAG_NONE			= 0,	/* Since: 0.4.2 */
-	AS_STORE_WATCH_FLAG_ADDED			= 1,	/* Since: 0.4.2 */
-	AS_STORE_WATCH_FLAG_REMOVED			= 2,	/* Since: 0.4.2 */
+	AS_STORE_WATCH_FLAG_NONE			= 0,		/* Since: 0.4.2 */
+	AS_STORE_WATCH_FLAG_ADDED			= 1 << 0,	/* Since: 0.4.2 */
+	AS_STORE_WATCH_FLAG_REMOVED			= 1 << 1,	/* Since: 0.4.2 */
 	/*< private >*/
 	AS_STORE_WATCH_FLAG_LAST
 } AsStoreWatchFlags;
