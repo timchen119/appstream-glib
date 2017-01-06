@@ -1511,7 +1511,7 @@ as_store_from_root (AsStore *store,
 		if (origin_str != NULL)
 			as_app_set_origin (app, origin_str);
 		if (source_filename_str != NULL)
-			as_app_set_source_file (app, source_filename_str);
+			as_app_add_source_file (app, source_filename_str);
 		as_store_add_app (store, app);
 	}
 
@@ -1630,8 +1630,10 @@ as_store_remove_by_source_file (AsStore *store, const gchar *filename)
 	ids = g_ptr_array_new_with_free_func (g_free);
 	apps = as_store_get_apps (store);
 	for (i = 0; i < apps->len; i++) {
+		GPtrArray *source_files;
 		app = g_ptr_array_index (apps, i);
-		if (g_strcmp0 (as_app_get_source_file (app), filename) != 0)
+		source_files = as_app_get_source_files (app);
+		if (!as_ptr_array_find_string (source_files, filename))
 			continue;
 		g_ptr_array_add (ids, g_strdup (as_app_get_id (app)));
 	}

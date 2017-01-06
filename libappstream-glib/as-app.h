@@ -496,6 +496,7 @@ GPtrArray	*as_app_get_reviews		(AsApp		*app);
 GPtrArray	*as_app_get_content_ratings	(AsApp		*app);
 GPtrArray	*as_app_get_icons		(AsApp		*app);
 GPtrArray	*as_app_get_bundles		(AsApp		*app);
+GPtrArray	*as_app_get_source_files	(AsApp		*app);
 GPtrArray	*as_app_get_translations	(AsApp		*app);
 GPtrArray	*as_app_get_suggests		(AsApp		*app);
 GPtrArray	*as_app_get_requires		(AsApp		*app);
@@ -547,6 +548,8 @@ gboolean	 as_app_has_compulsory_for_desktop (AsApp	*app,
 						 const gchar	*desktop);
 gboolean	 as_app_has_quirk		(AsApp		*app,
 						 AsAppQuirk	 quirk);
+gboolean	 as_app_has_source_file		(AsApp		*app,
+						 const gchar	*source_file);
 
 /* setters */
 void		 as_app_set_id			(AsApp		*app,
@@ -590,6 +593,8 @@ void		 as_app_set_description		(AsApp		*app,
 						 const gchar	*locale,
 						 const gchar	*description);
 void		 as_app_set_source_file		(AsApp		*app,
+						 const gchar	*source_file);
+void		 as_app_add_source_file		(AsApp		*app,
 						 const gchar	*source_file);
 void		 as_app_set_branch		(AsApp		*app,
 						 const gchar	*branch);

@@ -86,6 +86,7 @@ typedef struct
 	GPtrArray	*content_ratings;		/* of AsContentRating */
 	GPtrArray	*icons;				/* of AsIcon */
 	GPtrArray	*bundles;			/* of AsBundle */
+	GPtrArray	*source_files;			/* of AsRefString */
 	GPtrArray	*translations;			/* of AsTranslation */
 	GPtrArray	*suggests;			/* of AsSuggest */
 	GPtrArray	*requires;			/* of AsRequire */
@@ -108,7 +109,6 @@ typedef struct
 	AsRefString	*update_contact;
 	gchar		*unique_id;
 	gboolean	 unique_id_valid;
-	AsRefString	*source_file;
 	AsRefString	*branch;
 	gint		 priority;
 	gsize		 token_cache_valid;
@@ -484,8 +484,6 @@ as_app_finalize (GObject *object)
 	if (priv->update_contact != NULL)
 		as_ref_string_unref (priv->update_contact);
 	g_free (priv->unique_id);
-	if (priv->source_file != NULL)
-		as_ref_string_unref (priv->source_file);
 	if (priv->branch != NULL)
 		as_ref_string_unref (priv->branch);
 	g_hash_table_unref (priv->comments);
@@ -516,6 +514,7 @@ as_app_finalize (GObject *object)
 	g_ptr_array_unref (priv->translations);
 	g_ptr_array_unref (priv->suggests);
 	g_ptr_array_unref (priv->requires);
+	g_ptr_array_unref (priv->source_files);
 	g_ptr_array_unref (priv->vetos);
 
 	G_OBJECT_CLASS (as_app_parent_class)->finalize (object);
@@ -547,6 +546,7 @@ as_app_init (AsApp *app)
 	priv->translations = g_ptr_array_new_with_free_func ((GDestroyNotify) g_object_unref);
 	priv->suggests = g_ptr_array_new_with_free_func ((GDestroyNotify) g_object_unref);
 	priv->requires = g_ptr_array_new_with_free_func ((GDestroyNotify) g_object_unref);
+	priv->source_files = g_ptr_array_new_with_free_func ((GDestroyNotify) as_ref_string_unref);
 	priv->vetos = g_ptr_array_new_with_free_func ((GDestroyNotify) as_ref_string_unref);
 
 	priv->comments = g_hash_table_new_full (g_str_hash, g_str_equal,
@@ -1983,7 +1983,11 @@ const gchar *
 as_app_get_source_file (AsApp *app)
 {
 	AsAppPrivate *priv = GET_PRIVATE (app);
-	return priv->source_file;
+
+	if (priv->source_files->len == 0)
+		return NULL;
+
+	return g_ptr_array_index (priv->source_files, 0);
 }
 
 /**
@@ -2346,6 +2350,76 @@ as_app_set_source_pkgname (AsApp *app,
 }
 
 /**
+ * as_app_has_source_file:
+ * @app: a #AsApp instance.
+ * @source_file: the filename.
+ *
+ * Searches the source file list for a specific filename.
+ *
+ * Returns: %TRUE if the application has got the specified source file
+ *
+ * Since: 0.6.7
+ */
+gboolean
+as_app_has_source_file (AsApp *app, const gchar *source_file)
+{
+	AsAppPrivate *priv = GET_PRIVATE (app);
+
+	if (as_ptr_array_find_string (priv->source_files, source_file))
+		return TRUE;
+	return FALSE;
+}
+
+/**
+ * as_app_get_source_files:
+ * @app: a #AsApp instance.
+ *
+ * Gets all the source filenames the instance was populated from.
+ *
+ * NOTE: these are not set for %AS_APP_SOURCE_KIND_APPSTREAM entries.
+ *
+ * Returns: (element-type utf8) (transfer none): an array
+ *
+ * Since: 0.6.7
+ **/
+GPtrArray *
+as_app_get_source_files (AsApp *app)
+{
+	AsAppPrivate *priv = GET_PRIVATE (app);
+	return priv->source_files;
+}
+
+/**
+ * as_app_add_source_file:
+ * @app: a #AsApp instance.
+ * @source_file: the filename.
+ *
+ * Adds a file that the instance was sourced from.
+ *
+ * Since: 0.6.7
+ **/
+void
+as_app_add_source_file (AsApp *app, const gchar *source_file)
+{
+	AsAppPrivate *priv = GET_PRIVATE (app);
+
+	g_return_if_fail (source_file != NULL);
+
+	/* handle untrusted */
+	if ((priv->trust_flags & AS_APP_TRUST_FLAG_CHECK_VALID_UTF8) > 0 &&
+	    !as_app_validate_utf8 (source_file)) {
+		priv->problems |= AS_APP_PROBLEM_NOT_VALID_UTF8;
+		return;
+	}
+	if ((priv->trust_flags & AS_APP_TRUST_FLAG_CHECK_DUPLICATES) > 0 &&
+	    as_ptr_array_find_string (priv->source_files, source_file)) {
+		return;
+	}
+
+	g_ptr_array_add (priv->source_files, as_ref_string_new (source_file));
+}
+
+/**
  * as_app_set_source_file:
  * @app: a #AsApp instance.
  * @source_file: the filename.
@@ -2357,8 +2431,7 @@ as_app_set_source_pkgname (AsApp *app,
 void
 as_app_set_source_file (AsApp *app, const gchar *source_file)
 {
-	AsAppPrivate *priv = GET_PRIVATE (app);
-	as_ref_string_assign_safe (&priv->source_file, source_file);
+	as_app_add_source_file (app, source_file);
 }
 
 /**
@@ -3816,10 +3889,12 @@ as_app_subsume_private (AsApp *app, AsApp *donor, AsAppSubsumeFlags flags)
 	if (flags & AS_APP_SUBSUME_FLAG_KEYWORDS)
 		as_app_subsume_keywords (app, donor, flags);
 
-	/* source */
+	/* source files */
 	if (flags & AS_APP_SUBSUME_FLAG_SOURCE_FILE) {
-		if (priv->source_file != NULL)
-			as_app_set_source_file (app, priv->source_file);
+		for (i = 0; i < priv->source_files->len; i++) {
+			tmp = g_ptr_array_index (priv->source_files, i);
+			as_app_add_source_file (app, tmp);
+		}
 	}
 
 	/* branch */
@@ -5766,7 +5841,7 @@ as_app_parse_file (AsApp *app,
 				AS_APP_TRUST_FLAG_CHECK_VALID_UTF8);
 
 	/* set the source location */
-	as_app_set_source_file (app, filename);
+	as_app_add_source_file (app, filename);
 
 	/* parse */
 	switch (priv->source_kind) {
